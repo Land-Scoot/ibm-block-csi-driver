@@ -1,0 +1,32 @@
+name: Issue 901 Linux validation
+
+on:
+  push:
+    branches: [validation/901-linux-tests]
+
+permissions:
+  contents: read
+
+jobs:
+  node-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: f272b4ed66c203a71d78b30da29a48fb127672bc
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: go install github.com/golang/mock/mockgen@v1.6.0
+      - name: Full node suite with race detector
+        run: make test
+      - name: Verify all ten regression cases execute
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -race -v -count=1 -run '^TestDevicesAreNvmeCommandErrors$' ./node/pkg/driver | tee /tmp/issue-901-regression.log
+          ! grep -q -- '--- SKIP:' /tmp/issue-901-regression.log
+          test "$(grep -c -- '--- PASS: TestDevicesAreNvmeCommandErrors/' /tmp/issue-901-regression.log)" -eq 10
