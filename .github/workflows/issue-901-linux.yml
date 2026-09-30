@@ -27,6 +27,15 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          go test -race -v -count=1 -run '^TestDevicesAreNvmeCommandErrors$' ./node/pkg/driver | tee /tmp/issue-901-regression.log
+          if test -f /sys/module/nvme_core/parameters/multipath; then
+            printf 'N\n' > /tmp/issue-901-multipath
+            sudo unshare --mount --propagation private bash -c '
+              mount --bind /tmp/issue-901-multipath /sys/module/nvme_core/parameters/multipath
+              test "$(cat /sys/module/nvme_core/parameters/multipath)" = N
+              exec sudo -H -u "$1" env PATH="$2" DRIVER_CONFIG_YML="$3" "$4" test -race -v -count=1 -run "^TestDevicesAreNvmeCommandErrors$" ./node/pkg/driver
+            ' bash "$(id -un)" "$PATH" "$PWD/common/config.yaml" "$(command -v go)" | tee /tmp/issue-901-regression.log
+          else
+            DRIVER_CONFIG_YML="$PWD/common/config.yaml" go test -race -v -count=1 -run '^TestDevicesAreNvmeCommandErrors$' ./node/pkg/driver | tee /tmp/issue-901-regression.log
+          fi
           ! grep -q -- '--- SKIP:' /tmp/issue-901-regression.log
           test "$(grep -c -- '--- PASS: TestDevicesAreNvmeCommandErrors/' /tmp/issue-901-regression.log)" -eq 10
